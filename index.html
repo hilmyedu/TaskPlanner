@@ -24,7 +24,7 @@
 
     .app-container {
       width: 100%;
-      max-width: 1000px; /* Diperluas agar muat 2 kolom di desktop */
+      max-width: 1000px;
       display: flex;
       flex-direction: column;
       gap: 16px;
@@ -46,18 +46,23 @@
       letter-spacing: 0.5px;
     }
 
-    .btn-notif-perm {
+    .nav-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-notif-perm, .btn-test-notif {
       background: rgba(255, 255, 255, 0.2);
       color: #fff;
       border: 1px solid rgba(255, 255, 255, 0.4);
-      padding: 6px 14px;
+      padding: 6px 12px;
       border-radius: 20px;
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       cursor: pointer;
       transition: background 0.2s;
     }
 
-    .btn-notif-perm:hover {
+    .btn-notif-perm:hover, .btn-test-notif:hover {
       background: rgba(255, 255, 255, 0.3);
     }
 
@@ -84,15 +89,14 @@
     .main-content {
       padding: 0 16px;
       display: flex;
-      flex-direction: column; /* Default HP: Menumpuk vertikal */
+      flex-direction: column;
       gap: 16px;
     }
 
-    /* MEDIA QUERY DESKTOP: Ubah jadi 2 kolom saat layar lebar (>= 768px) */
     @media (min-width: 768px) {
       .main-content {
         display: grid;
-        grid-template-columns: 1fr 1fr; /* Kolom kiri (Kalender) & Kolom kanan (Card Detail) */
+        grid-template-columns: 1fr 1fr;
         align-items: start;
       }
 
@@ -197,7 +201,7 @@
       background-color: #ffffff;
     }
 
-    /* CARD DETAIL TANGGAL (KANAN DI DESKTOP) */
+    /* CARD DETAIL */
     .detail-card {
       display: flex;
       flex-direction: column;
@@ -212,7 +216,6 @@
       padding-bottom: 10px;
     }
 
-    /* SECTION CATATAN */
     .note-section {
       display: flex;
       flex-direction: column;
@@ -241,7 +244,6 @@
       border-color: #4f46e5;
     }
 
-    /* FORM KEGIATAN DENGAN JAM */
     .task-form {
       display: flex;
       flex-direction: column;
@@ -282,7 +284,6 @@
       cursor: pointer;
     }
 
-    /* LIST KEGIATAN */
     .task-list {
       list-style: none;
       display: flex;
@@ -346,7 +347,10 @@
     <!-- NAVBAR -->
     <nav class="app-navbar">
       <div class="brand">TaskPlanner</div>
-      <button class="btn-notif-perm" id="btnNotif">🔔 Aktifkan Notif</button>
+      <div class="nav-buttons">
+        <button class="btn-test-notif" id="btnTestNotif">🧪 Tes Notif</button>
+        <button class="btn-notif-perm" id="btnNotif">🔔 Aktifkan Notif</button>
+      </div>
     </nav>
 
     <!-- HERO SECTION -->
@@ -356,7 +360,6 @@
     </header>
 
     <div class="main-content">
-      <!-- KOLOM KIRI (DESKTOP): CARD KALENDER -->
       <div class="card">
         <div class="calendar-header">
           <button class="btn-nav" id="prevMonth">&lt;</button>
@@ -371,17 +374,14 @@
         <div class="days-grid" id="daysGrid"></div>
       </div>
 
-      <!-- KOLOM KANAN (DESKTOP): CARD DETAIL TANGGAL & TUGAS -->
       <div class="card detail-card">
         <div class="detail-header" id="selectedDateTitle">Pilih Tanggal</div>
 
-        <!-- CATATAN / NOTE -->
         <div class="note-section">
           <label for="noteInput">Catatan Hari Ini</label>
           <textarea id="noteInput" class="note-input" placeholder="Tulis catatan penting..."></textarea>
         </div>
 
-        <!-- INPUT KEGIATAN & JAM -->
         <form class="task-form" id="taskForm">
           <div class="input-row">
             <input type="text" id="taskInput" placeholder="Tambah kegiatan..." required>
@@ -390,13 +390,24 @@
           <button type="submit" class="btn-add">+ Tambah Kegiatan</button>
         </form>
 
-        <!-- LIST KEGIATAN -->
         <ul class="task-list" id="taskList"></ul>
       </div>
     </div>
   </div>
 
   <script>
+    // 1. REGISTRASI SERVICE WORKER UNTUK PWA NOTIFIKASI
+    let swRegistration = null;
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => {
+          swRegistration = reg;
+          console.log('Service Worker Berhasil Didaftarkan:', reg);
+        })
+        .catch(err => console.error('Gagal Registrasi Service Worker:', err));
+    }
+
     // CHROME STORAGE WRAPPER
     const Storage = {
       get: (key, callback) => {
@@ -422,6 +433,7 @@
     const prevMonthBtn = document.getElementById('prevMonth');
     const nextMonthBtn = document.getElementById('nextMonth');
     const btnNotif = document.getElementById('btnNotif');
+    const btnTestNotif = document.getElementById('btnTestNotif');
     
     const selectedDateTitle = document.getElementById('selectedDateTitle');
     const noteInput = document.getElementById('noteInput');
@@ -491,7 +503,6 @@
       }
     }
 
-    // SELECT DATE
     function selectDate(dateStr, day, month, year) {
       selectedDateStr = dateStr;
       selectedDateTitle.textContent = `${day} ${monthNames[month]} ${year}`;
@@ -569,7 +580,6 @@
       timeInput.value = '';
     });
 
-    // TOGGLE & DELETE TASK
     window.toggleTask = function(id) {
       if (!db[selectedDateStr]) return;
       db[selectedDateStr].tasks = db[selectedDateStr].tasks.map(t => 
@@ -593,47 +603,77 @@
       return div.innerHTML;
     }
 
-    // NOTIFICATION SYSTEM
-    btnNotif.addEventListener('click', () => {
-      if ('Notification' in window) {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            btnNotif.textContent = '✅ Notif Aktif';
-            btnNotif.style.opacity = '0.7';
-          } else {
-            alert('Izin notifikasi ditolak.');
-          }
+    // FUNGSI MEMICU NOTIFIKASI LEWAT SERVICE WORKER (PWA)
+    function triggerNotification(title, body) {
+      if (swRegistration && swRegistration.active) {
+        swRegistration.active.postMessage({
+          type: 'SHOW_NOTIFICATION',
+          title: title,
+          body: body
         });
+      } else if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { body: body });
+      }
+    }
+
+    // BUTTON LISTENERS
+    btnNotif.addEventListener('click', () => {
+      if (!('Notification' in window)) {
+        alert('Browser tidak mendukung Notifikasi.');
+        return;
+      }
+
+      if (Notification.permission === 'denied') {
+        alert('Izin diblokir. Harap buka ikon gembok/setelan di dekat URL untuk mengubah izin Notifikasi ke "Izinkan".');
+        return;
+      }
+
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          btnNotif.textContent = '✅ Notif Aktif';
+          btnNotif.style.opacity = '0.7';
+          triggerNotification('TaskPlanner', 'Izin notifikasi berhasil diaktifkan!');
+        } else {
+          alert('Izin notifikasi ditolak.');
+        }
+      });
+    });
+
+    // TOMBOL TES NOTIFIKASI LANGSUNG
+    btnTestNotif.addEventListener('click', () => {
+      if (Notification.permission === 'granted') {
+        triggerNotification('Uji Notifikasi', 'Notifikasi sistem dan Service Worker berhasil bekerja!');
       } else {
-        alert('Browser ini tidak mendukung Web Notifications.');
+        alert('Klik tombol "🔔 Aktifkan Notif" terlebih dahulu.');
       }
     });
 
+    // MONITORING WAKTU DENGAN SLOP RENTANG 5 MENIT
     function checkNotifications() {
       if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
       const now = new Date();
       const todayStr = formatDateKey(now.getFullYear(), now.getMonth(), now.getDate());
-      const currentHours = String(now.getHours()).padStart(2, '0');
-      const currentMinutes = String(now.getMinutes()).padStart(2, '0');
-      const currentTimeStr = `${currentHours}:${currentMinutes}`;
+      const currentMinutesTotal = (now.getHours() * 60) + now.getMinutes();
 
       const todayEntry = db[todayStr];
       if (todayEntry && todayEntry.tasks) {
         todayEntry.tasks.forEach(task => {
-          if (task.time === currentTimeStr && !task.notified && !task.completed) {
-            new Notification('Pengingat Kegiatan!', {
-              body: `${task.text} (${task.time})`,
-              icon: 'https://cdn-icons-png.flaticon.com/512/2693/2693507.png'
-            });
-            task.notified = true;
-            saveDB();
+          if (task.time && !task.notified && !task.completed) {
+            const [h, m] = task.time.split(':').map(Number);
+            const taskMinutesTotal = (h * 60) + m;
+
+            if (currentMinutesTotal >= taskMinutesTotal && (currentMinutesTotal - taskMinutesTotal) <= 5) {
+              triggerNotification('Pengingat Kegiatan!', `${task.text} (${task.time})`);
+              task.notified = true;
+              saveDB();
+            }
           }
         });
       }
     }
 
-    setInterval(checkNotifications, 10000);
+    setInterval(checkNotifications, 5000);
 
     // NAVIGASI BULAN
     prevMonthBtn.addEventListener('click', () => {
