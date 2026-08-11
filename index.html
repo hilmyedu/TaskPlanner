@@ -38,13 +38,15 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .app-navbar .brand { font-size: 1.1rem; font-weight: 700; }
 
-    .nav-buttons { display: flex; gap: 8px; }
+    .nav-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 
-    .btn-notif-perm, .btn-test-notif {
+    .btn-notif-perm, .btn-test-notif, .btn-action {
       background: rgba(255, 255, 255, 0.2);
       color: #fff;
       border: 1px solid rgba(255, 255, 255, 0.4);
@@ -52,6 +54,11 @@
       border-radius: 20px;
       font-size: 0.75rem;
       cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-notif-perm:hover, .btn-test-notif:hover, .btn-action:hover {
+      background: rgba(255, 255, 255, 0.35);
     }
 
     .hero-section {
@@ -277,6 +284,9 @@
     <nav class="app-navbar">
       <div class="brand">TaskPlanner</div>
       <div class="nav-buttons">
+        <button class="btn-action" id="btnExport">📥 Export</button>
+        <button class="btn-action" id="btnImport">📤 Import</button>
+        <input type="file" id="importFileInput" accept=".json" style="display: none;">
         <button class="btn-test-notif" id="btnTestNotif">🧪 Tes Notif</button>
         <button class="btn-notif-perm" id="btnNotif">🔔 Aktifkan Notif</button>
       </div>
@@ -439,6 +449,10 @@
     const btnNotif = document.getElementById('btnNotif');
     const btnTestNotif = document.getElementById('btnTestNotif');
     
+    const btnExport = document.getElementById('btnExport');
+    const btnImport = document.getElementById('btnImport');
+    const importFileInput = document.getElementById('importFileInput');
+
     const selectedDateTitle = document.getElementById('selectedDateTitle');
     const noteInput = document.getElementById('noteInput');
     const taskForm = document.getElementById('taskForm');
@@ -508,7 +522,64 @@
       }
     };
 
-    // RENDER KALENDER (TITIK MERAH HANYA UNTUK AGENDA TANGGAL)
+    /* --- EXPORT & IMPORT DATA LOGIC --- */
+    btnExport.addEventListener('click', () => {
+      const exportData = {
+        db: db,
+        routines: routines,
+        exportedAt: new Date().toISOString()
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      const todayStr = new Date().toISOString().split('T')[0];
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `taskplanner_backup_${todayStr}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    });
+
+    btnImport.addEventListener('click', () => {
+      importFileInput.click();
+    });
+
+    importFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const importedData = JSON.parse(event.target.result);
+
+          if (!importedData.db || !importedData.routines) {
+            alert("Format file JSON tidak valid atau struktur data tidak sesuai.");
+            return;
+          }
+
+          if (confirm("Apakah Anda yakin ingin mengimpor data ini? Data yang ada saat ini akan ditimpa.")) {
+            db = importedData.db;
+            routines = importedData.routines;
+
+            saveDB();
+            renderCalendar();
+            renderDetailCard();
+            renderRoutineGrid();
+
+            alert("Data berhasil diimpor!");
+          }
+        } catch (err) {
+          alert("Gagal membaca file JSON.");
+          console.error(err);
+        }
+      };
+
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
+    /* --- RENDER KALENDER (TITIK MERAH HANYA UNTUK AGENDA TANGGAL) --- */
     function renderCalendar() {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
@@ -538,7 +609,6 @@
         if (dateStr === selectedDateStr) dayCell.classList.add('selected');
 
         const entry = db[dateStr];
-        // HANYA CEK AGENDA KHUSUS TANGGAL & CATATAN
         if (entry && ((entry.tasks && entry.tasks.length > 0) || (entry.note && entry.note.trim() !== ''))) {
           const dot = document.createElement('div');
           dot.className = 'task-dot';
@@ -557,14 +627,14 @@
       renderDetailCard();
     }
 
-    // RENDER DETAIL PANEL (DIPISAH: AGENDA & RUTINITAS)
+    /* --- RENDER DETAIL PANEL --- */
     function renderDetailCard() {
       const entry = db[selectedDateStr] || { note: '', tasks: [] };
       noteInput.value = entry.note || '';
       taskList.innerHTML = '';
       routineTodayList.innerHTML = '';
 
-      // 1. RENDER AGENDA TANGGAL
+      // 1. Agenda Tanggal Ini
       const singleTasks = entry.tasks || [];
       if (singleTasks.length === 0) {
         taskList.innerHTML = `<li class="empty-state">Tidak ada agenda sekali jalan.</li>`;
@@ -587,7 +657,7 @@
         });
       }
 
-      // 2. RENDER RUTINITAS HARI INI
+      // 2. Rutinitas Hari Ini
       const [y, m, d] = selectedDateStr.split('-').map(Number);
       const selectedDateObj = new Date(y, m - 1, d);
       const dayOfWeek = String(selectedDateObj.getDay());
@@ -619,7 +689,6 @@
       }
     }
 
-    // TOGGLE RUTINITAS TANPA MENGOTAK-ATIK AGENDA TANGGAL
     window.toggleRoutineStatus = function(routineId) {
       if (!db[selectedDateStr]) db[selectedDateStr] = { note: '', tasks: [], routineStatus: {} };
       if (!db[selectedDateStr].routineStatus) db[selectedDateStr].routineStatus = {};
