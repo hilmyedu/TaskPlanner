@@ -997,28 +997,49 @@
       const currentMinutesTotal = (now.getHours() * 60) + now.getMinutes();
       const dayOfWeek = String(now.getDay());
 
-      const todayEntry = db[todayStr] || { tasks: [] };
-      let allTodayTasks = [...(todayEntry.tasks || [])];
+      if (!db[todayStr]) db[todayStr] = { note: '', tasks: [] };
+      const todayEntry = db[todayStr];
+      if (!todayEntry.routineNotified) todayEntry.routineNotified = {};
 
-      routines.filter(r => {
-        const isExcluded = r.excludeDays && r.excludeDays.includes(dayOfWeek);
-        return (r.freq === 'daily' || r.freq === dayOfWeek) && !isExcluded;
-      }).forEach(r => {
-        allTodayTasks.push({ id: 'r_' + r.id, text: r.text, time: r.time, notified: false });
-      });
+      let dbChanged = false;
 
-      allTodayTasks.forEach(task => {
+      // 1. Agenda tanggal ini (notified flag disimpan langsung di object task)
+      (todayEntry.tasks || []).forEach(task => {
         if (task.time && !task.notified && !task.completed) {
           const [h, m] = task.time.split(':').map(Number);
           const taskMinutesTotal = (h * 60) + m;
 
           if (currentMinutesTotal >= taskMinutesTotal && (currentMinutesTotal - taskMinutesTotal) <= 5) {
-            triggerNotification('Pengingat Kegiatan!', `${task.text} (${task.time})`);
+            triggerNotification('Pengingat Agenda!', `${task.text} (${task.time})`);
             task.notified = true;
-            saveDB();
+            dbChanged = true;
           }
         }
       });
+
+      // 2. Rutinitas hari ini (notified flag disimpan terpisah per tanggal, per rutinitas,
+      //    supaya statusnya persisten dan reset otomatis setiap hari baru)
+      const isRoutineCompleted = (routineId) => todayEntry.routineStatus && todayEntry.routineStatus[routineId];
+
+      routines.filter(r => {
+        const isExcluded = r.excludeDays && r.excludeDays.includes(dayOfWeek);
+        return (r.freq === 'daily' || r.freq === dayOfWeek) && !isExcluded;
+      }).forEach(r => {
+        if (!r.time) return;
+        if (todayEntry.routineNotified[r.id]) return;
+        if (isRoutineCompleted(r.id)) return;
+
+        const [h, m] = r.time.split(':').map(Number);
+        const routineMinutesTotal = (h * 60) + m;
+
+        if (currentMinutesTotal >= routineMinutesTotal && (currentMinutesTotal - routineMinutesTotal) <= 5) {
+          triggerNotification('Pengingat Rutinitas!', `${r.text} (${r.time})`);
+          todayEntry.routineNotified[r.id] = true;
+          dbChanged = true;
+        }
+      });
+
+      if (dbChanged) saveDB();
     }
 
     setInterval(checkNotifications, 5000);
